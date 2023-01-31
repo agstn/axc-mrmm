@@ -1,0 +1,2037 @@
+---
+title:     "Estimate Treatment Effects RCT"
+author:    "**Agustin Calatroni** <br> ![AXC](pic/Agustin_2.jpg){width=12%}"
+date:      "`r format(Sys.time(), '%A %d %B, %Y')`"
+date-format: "dddd, [the] D[<sup style='font-size:65%;font-style:italic;'>th</sup>] [of] MMMM, YYYY"
+
+execute:
+  echo:    false
+  warning: false
+  message: false
+  cache:   false
+
+format:
+  revealjs:
+     
+     height: 900
+     width: 1600
+    
+     # theme: simple
+     # scrollable: false
+     # smaller: true
+     self-contained: true
+     controls: true
+     # slide-number: false
+     # preview-links: true
+     
+     # code-fold: true
+     # code-overflow: scroll
+     # code-line-numbers: false
+     # code-copy: true
+     # highlight-style: github
+---
+
+```{=html}
+<style type="text/css">
+.main-container {
+max-width: 1200px;
+margin-left: auto;
+margin-right: auto;}
+</style>
+```
+<!-- QUARTO Extensions -->
+
+<!-- quarto install extension quarto-ext/fontawesome -->
+
+<h1>Outline</h1>
+
+::: incremental
+-   <h2>How to estimate treatment effects in longitudinal RCT's</h2>
+
+-   <h3>Problem</h3>
+
+-   <h3>Data</h3>
+
+-   <h3>Models R &SAS</h3>
+
+-   <h3>Results</h3>
+
+-   <h2>How to extend these estimation</h2>
+
+-   <h2>How to aggregate & communicate these results</h2>
+:::
+
+# Different {{< fa not-equal >}} ways to estimate treatment effects in randomised controlled trials {.smaller}
+
+## [Abstract](https://www.sciencedirect.com/science/article/pii/S2451865417301849)
+
+::: {style="font-size: 1.25em;"}
+Regarding the analysis of longitudinal RCT data there is a debate going on whether an adjustment for the baseline value of the outcome variable should be made. When an adjustment is made, there is a lot of misunderstanding regarding the way this should be done. Therefore, the aims to:
+
+::: incremental
+-   to explain different methods used to estimate treatment effects in RCTs
+
+-   to illustrate the different methods with a real data example
+
+-   to give an advise on how to analyse RCT data
+:::
+:::
+
+## [ADaM Basic Data Structure (BDS) {{< fa database >}}](https://www.cdisc.org/kb/examples/adam-basic-data-structure-bds-using-paramcd-80288192){preview-link="false" target="_blank"}
+
+::: r-stack
+![](pic/ADaM_BDS_00.png){.fragment .fade-in-then-out .absolute top="100" right="100"}
+
+![](pic/ADaM_BDS_01.png){.fragment .fade-in-then-out .absolute top="100" right="100"} ![](pic/ADaM_BDS_02.png){.fragment .fade-in-then-out .absolute top="100" right="100"}
+
+![](pic/ADaM_BDS_03.png){.fragment .fade-in-then-out .absolute top="100" right="100"}
+
+![](pic/ADaM_BDS_04.png){.fragment .fade-in-then-out .absolute top="100" right="100"}
+:::
+
+## Example dataset {{< fa table >}} {.smaller}
+
+[Treatment of Lead Exposed Children Trial (N=100)](https://content.sph.harvard.edu/fitzmaur/ala2e/tlc.txt){preview-link="false" target="_blank"}
+
+```{r}
+pacman::p_load(tidyverse, rio)
+pacman::p_load(labelled)
+pacman::p_load(mmrm, emmeans, multcomp)
+pacman::p_load(broom)
+pacman::p_load(gt, gtsummary, gtreg)
+
+pacman::p_load(ggbeeswarm)
+pacman::p_load(patchwork)
+
+emm_options(emmeans = list(infer = c(TRUE, TRUE)),
+            contrast = list(infer = c(TRUE, TRUE)),
+            summary = list(adjust = 'none'))
+
+tlc_w     <- import("dat/tlc_w.rds") 
+tlcmiss_w <- import("dat/tlcmiss_w.rds") 
+
+tlc_l    <- import("dat/tlc_l.rds")
+tlc3_l   <- import("dat/tlc3_l.rds")
+```
+
+<!--start panels-->
+
+::: panel-tabset
+### Wide
+
+```{r}
+tlc_w  %>% 
+   gt_preview(top_n = 5,
+              bottom_n = 2,
+              incl_rownums = FALSE)
+```
+
+### Long
+
+```{r}
+tlc_l  %>% 
+   select(-base, -diff, -follow) %>% 
+   gt_preview(top_n = 5,
+              bottom_n = 2,
+              incl_rownums = FALSE)
+```
+:::
+
+## Table (wo/missing) {{< fa plus-minus >}} {.smaller}
+
+[Treatment of Lead Exposed Children Trial (N=100)](https://content.sph.harvard.edu/fitzmaur/ala2e/tlc.txt){preview-link="false" target="_blank"}
+
+```{r}
+#| echo: true
+#| code-fold: true
+tbl_summary(data = tlc_w,
+            by = trt, 
+            include = starts_with('w'),
+            digit = list(everything() ~ c(1,2)),
+            statistic = list(all_continuous() ~ "{mean} ({sd})"),
+            label = list( w_0 ~ 'Week 0',
+                          w_1 ~ 'Week 1',
+                          w_4 ~ 'Week 4',
+                          w_6 ~ 'Week 6')) %>% 
+   add_difference(test = list(all_continuous() ~ "t.test"),
+                  pvalue_fun = ~style_pvalue(.x, digits = 2),
+                  estimate_fun = list(all_continuous() ~ function(x) style_number(x, digits=1)) ) %>% 
+   bold_labels() %>% 
+   modify_column_merge(pattern = "{estimate} ({ci})") %>% 
+   modify_header(label = '',
+                 estimate = '**Difference (95% CI)**',
+                 all_stat_cols(FALSE) ~ "**{level}**<br>n = {n}" ) %>% 
+   modify_spanning_header(all_stat_cols(FALSE) ~ "**Treatment**") %>% 
+   # modify_footnote(everything() ~ NA) %>%
+   add_n()
+```
+
+## Tables (w/missing) {{< fa plus-minus >}} {.smaller .scrollable}
+
+[Treatment of Lead Exposed Children Trial with Missing Data (N=100)](https://content.sph.harvard.edu/fitzmaur/ala2e/tlcmiss.txt){preview-link="false" target="_blank"}
+
+::: panel-tabset
+### TABLE-1
+
+```{r}
+#| echo: true
+#| code-fold: true
+tbl_summary(data = tlcmiss_w ,
+            by = trt, 
+            missing = 'no',
+            include = starts_with('w'),
+            digit = list(everything() ~ c(1,2)),
+            statistic = list(all_continuous() ~ "{mean} ({sd})"),
+            label = list( w_0 ~ 'Week 0',
+                          w_1 ~ 'Week 1',
+                          w_4 ~ 'Week 4',
+                          w_6 ~ 'Week 6')) %>% 
+   add_difference(test = list(all_continuous() ~ "t.test"),
+                  pvalue_fun = ~style_pvalue(.x, digits = 2),
+                  estimate_fun = list(all_continuous() ~ function(x) style_number(x, digits=1)) ) %>% 
+   bold_labels() %>% 
+   modify_column_merge(pattern = "{estimate} ({ci})") %>% 
+   modify_header(label = '',
+                 estimate = '**Difference (95% CI)**',
+                 all_stat_cols(FALSE) ~ "**{level}**<br>n = {n}" ) %>% 
+   modify_spanning_header(all_stat_cols(FALSE) ~ "**Treatment**") %>% 
+   # modify_footnote(everything() ~ NA) %>%
+   add_n() 
+```
+
+### TABLE-2
+
+```{r}
+#| echo: true
+#| code-fold: true
+tbl_reg_summary(data = tlcmiss_w,
+                by = trt, 
+                include = starts_with('w'),
+                digits = list(everything() ~ c(0,1,2,1,1,1,1,1,0))) %>% 
+   add_overall() %>% 
+   bold_labels() %>% 
+   modify_header(all_stat_cols(TRUE) ~ "**{level}**" )
+```
+:::
+
+## Figures {{< fa chart-line >}} {.smaller}
+
+<!--start panels-->
+
+::: panel-tabset
+### DOTPLOT
+
+```{r}
+#| name: fig-dotplot
+#| fig.dpi: 300
+#| fig.height: 7
+#| fig.width:  12
+#| fig.align: 'center'
+#| echo: true
+#| code-fold: true
+
+ggplot(data = tlc_l %>% 
+          mutate(week = as.character(week) %>% as.numeric()),
+       aes(x = week, y = lead, color = trt)) +
+   geom_quasirandom(dodge.width=1, alpha = 0.5, size = 2.5) +
+   scale_colour_brewer(palette = "Set1",
+                       name = 'Treatment') +
+   scale_y_continuous(name = 'Lead (micrograms/dL)',
+                      limits = c(0, 65)) +
+   scale_x_continuous(name = 'Week',
+                      breaks = c(0, 1, 4, 6),
+                      labels = c('0\nRandomization', '1', '4', '6')) +
+   theme_bw(base_size = 20) + 
+   theme(panel.grid.minor = element_blank(),
+         legend.position = c(0.02, 0.98),
+         legend.justification = c('left','top'))
+```
+
+### BOXPLOT
+
+```{r}
+#| name: fig-boxplot
+#| fig.dpi: 300
+#| fig.height: 7
+#| fig.width:  12
+#| fig.align: 'center'
+#| echo: true
+#| code-fold: true
+
+m2 <- mmrm(lead ~ trt * week + us(week | id), data = tlc_l)
+e2 <- emmeans(m2, pairwise ~ trt | week) %>% 
+   as.data.frame() %>% 
+   mutate(week = as.numeric(week))
+
+f_a <- ggplot(data = tlc_l %>% 
+                 mutate(week = as.character(week) %>% as.numeric()),
+              aes(x = week, y = lead, color = trt) ) +
+   geom_quasirandom(dodge.width=1, alpha = 0.2, size = 2.5, show.legend = FALSE) +
+   geom_boxplot(aes(group = interaction(week, trt)),
+                fill = 'transparent',
+                outlier.shape = NA,
+                show.legend = FALSE) +
+   scale_colour_brewer(palette = "Set1",
+                       name = 'Treatment') +
+   scale_y_continuous(name = 'Lead (micrograms/dL)',
+                      limits = c(0, 65)) +
+   scale_x_continuous(name = NULL,
+                      breaks = c(0, 1, 4, 6),
+                      labels = c('0\nRandomization', '1', '4', '6')) +
+   stat_summary(fun = mean,
+                geom = "point",
+                size = 3,
+                position = position_dodge(width = 1)) +
+   stat_summary(fun = mean,
+                geom = "line",
+                size = 1,
+                position = position_dodge(width = 1),
+                show.legend = FALSE) +
+   theme_bw(base_size = 20) +
+   theme(panel.grid.minor = element_blank(),
+         legend.position = c(0.02, 0.98),
+         legend.justification = c('left','top'))
+
+f_b <- ggplot(data = e2 %>% filter(contrast != '.'),
+              aes(x = week, y = emmean, group = contrast)) + 
+   
+   geom_hline(yintercept  = 0, color = 'gray50') +
+   geom_point(size = 3) +
+   geom_line(size = 1) +
+   geom_linerange(aes(ymin = lower.CL,
+                      ymax = upper.CL),
+                  size = 1) +
+   geom_text(aes(y = 4.75,
+                 label = gtsummary::style_pvalue(p.value, digits = 2, prepend_p = TRUE)),
+             size = 4) +
+   scale_color_discrete(name = 'Treatment') +
+   scale_y_continuous(name = 'Difference',
+                      limits = c(-15, 5)) +
+   scale_x_continuous(name = 'Week',
+                      expand = c(0.12,0.12),
+                      breaks = c(0, 1, 4, 6),
+                      labels = c('0\nRandomization', '1', '4', '6')) +
+   theme_bw(base_size = 20) +
+   theme(panel.grid.minor = element_blank())
+
+f_a / f_b + plot_layout( heights = c(3, 1))
+```
+
+### LINEPLOT
+
+```{r}
+#| name: fig-linepolot
+#| fig.dpi: 300
+#| fig.height: 7
+#| fig.width:  16
+#| fig.align: 'center'
+#| echo: true
+#| code-fold: true
+
+ggplot(data = tlc_l %>% 
+          mutate(week = as.character(week) %>% as.numeric()),
+       aes(x = week, y = lead, color = trt, group = id)) +
+   geom_quasirandom(dodge.width = 0.5, alpha = 0.5, size = 2.5) +
+   geom_line(alpha = 0.5,
+             position=position_quasirandom(dodge.width = 0.5)) +
+   facet_wrap(. ~ trt ) +
+   scale_colour_brewer(palette = "Set1",
+                       name = 'Treatment') +
+   scale_y_continuous(name = 'Lead (micrograms/dL)',
+                      limits = c(0, 65)) +
+   scale_x_continuous(name = 'Week',
+                      breaks = c(0, 1, 4, 6),
+                      labels = c('0\nRandomization', '1', '4', '6')) +
+   theme_bw(base_size = 18) +
+   theme(panel.grid.minor = element_blank(),
+         legend.position="none")
+```
+:::
+
+<!--end panels-->
+
+## [trelliscopejs: scalable, flexible & interactive approach to visualizing data {{< fa clone >}}](https://hafen.github.io/trelliscopejs/)
+
+```{=html}
+<script src="https://unpkg.com/trelliscopejs-lib/dist/trelliscope.min.js"></script>
+```
+
+```{r}
+#| name: fig-trelliscope
+#| eval: true
+#| include: false
+#| echo: true
+#| code-fold: true
+
+pacman::p_load(trelliscopejs)
+
+ggplot(data = tlc_l %>% 
+          mutate(week = as.character(week) %>% as.numeric()), 
+       aes(x = week, y = lead, group = id)) +
+   geom_point(size = 2.5) +
+   geom_line() +
+   # scale_colour_brewer(palette = "Set1",
+   #                     name = 'Treatment') +
+   scale_y_continuous(name = 'Lead (micrograms/dL)',
+                      limits = c(0, 65)) +
+   scale_x_continuous(name = 'Week',
+                      breaks = c(0, 1, 4, 6),
+                      labels = c('0\nRandomization', '1', '4', '6')) +
+   facet_trelliscope(~ id + trt,
+                     scales = 'free',
+                     name = 'LinePlot by ID',
+                     nrow = 2, ncol = 3,
+                     height = 400, width = 600,
+                     path = 'trelliscope',
+                     state = list(
+                        sort = list(sort_spec('lead_var', dir = 'desc')),
+                        labels = c('id','trt')
+                        )
+                     ) +
+   theme_bw(base_size = 16) +
+   theme(panel.grid.minor = element_blank(),
+         legend.position="none")
+```
+
+#  {background-iframe="trelliscope/index.html" background-interactive="TRUE"}
+
+## [Scatterplot Matrix {{< fa calculator >}}](https://cran.r-project.org/web/packages/scatterPlotMatrix/){preview-link="true"} {.smaller}
+
+```{r}
+pacman::p_load(scatterPlotMatrix)
+
+scatterPlotMatrix(data = tlc_w[,-1],
+                  zAxisDim = 'trt',
+                  categoricalCS = "Set1",
+                  slidersPosition = list(
+                     dimCount = 4,
+                     xStartingDimIndex = 2,
+                     yStartingDimIndex = 2 ),
+                  columnLabels = c('TRT', 'W0', 'W1', 'W4', 'W6'),
+                  distribType = 1,
+                  regressionType = 1,
+                  plotProperties =  list( noCatColor= "#43665e", 
+                                          watermarkColor = "#ddd", 
+                                          point = list( alpha = 0.5, radius = 3 ),
+                                          regression = list( strokeWidth = 1 ) ),
+                  corrPlotType = "Text",
+                  width = '900', height = '900')
+```
+
+## [Mixed models for repeated measures (MMRM)](https://cran.r-project.org/web/packages/scatterPlotMatrix/){preview-link="true"} {.smaller}
+
+![](pic/mmrm_openpharma.png)
+
+## **Method 1:** Longitudinal analysis of covariance {.smaller}
+
+::: columns
+::: {.column width="50%"}
+### Overall TRT effect
+
+::: panel-tabset
+### EQ
+
+$$Y_{t} = \beta_0 + \beta_1X + \beta_2Y_{t0}$$
+
+### MODEL {.scrollable style="font-size: 1.25em;"}
+
+```{r}
+#| echo: true
+#| code-fold: true
+
+tlc3_l <- tlc3_l %>% mutate(trt = fct_rev(trt))
+
+m1a <- mmrm(lead ~ trt + base + 
+               us(week|id),     
+            data = tlc3_l %>% filter(week != '0'))
+
+e1a <- emmeans(m1a, revpairwise ~ trt) %>% 
+   as.data.frame() 
+
+summary(m1a)
+```
+
+### DATA
+
+```{r}
+#| echo: true
+#| code-fold: true
+m1a$tmb_data$full_frame %>%
+   select(-`(weights)`) %>% 
+   gt_preview(incl_rownums = TRUE)
+```
+
+### COEFF
+
+```{r}
+#| echo: true
+#| code-fold: true
+summary(m1a)$coefficient %>% 
+   as.data.frame() %>% 
+   rownames_to_column() %>% 
+   select(-df) %>% 
+   gt(rowname_col = "rownames") %>% 
+   fmt_number(columns = 2:4, decimals = 2) %>% 
+   fmt(columns = 5, 
+       fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+   cols_align_decimal() %>% 
+   cols_label(rowname = '')
+```
+
+### SAS {style="font-size: 1.25em;"}
+
+<details>
+
+<summary>Code</summary>
+
+``` sas
+proc glimmix data=tlc3_l noclprint = 10;
+ where week ^= 0;
+ class id week (ref = first) trt (ref = last);
+ model lead = trt base / solution ddfm=satterthwaite;
+ random _residual_ / subject=id type=un;
+ lsmeans trt / diff cl;
+run; 
+```
+
+</details>
+
+```{r}
+knitr::include_app("sas/m1a.html", height = "600px")
+```
+:::
+:::
+
+::: {.column width="50%"}
+### Weekly TRT effect
+
+::: panel-tabset
+### EQ
+
+$$Y_{t} = \beta_0 + \beta_1X + \beta_2Y_{t0} + \beta_3time + \beta_4X\times time$$
+
+### MODEL {.scrollable style="font-size: 1.25em;"}
+
+```{r}
+#| echo: true
+#| code-fold: true
+m1b <- mmrm(lead ~ trt + base + week + week:trt + 
+               us(week|id),     
+            data = tlc3_l %>% filter(week != '0'))
+
+e1b <- emmeans(m1b, revpairwise ~ trt | week) %>% 
+   as.data.frame()
+
+summary(m1b)
+```
+
+### DATA
+
+```{r}
+#| echo: true
+#| code-fold: true
+m1b$tmb_data$full_frame %>%
+   select(-`(weights)`) %>% 
+   gt_preview(incl_rownums = TRUE)
+```
+
+### COEFF
+
+```{r}
+#| echo: true
+#| code-fold: true
+summary(m1b)$coefficient %>% 
+   as.data.frame() %>% 
+   rownames_to_column() %>% 
+   select(-df) %>% 
+   gt(rowname_col = "rownames") %>% 
+   fmt_number(columns = 2:4, decimals = 2) %>% 
+   fmt(columns = 5, 
+       fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+   cols_align_decimal() %>% 
+   cols_label(rowname = '')
+```
+
+### SAS {style="font-size: 1.25em;"}
+
+<details>
+
+<summary>Code</summary>
+
+``` sas
+proc glimmix data=tlc3_l noclprint = 10;
+ where week ^= 0;
+ class id week (ref = first) trt (ref = last);
+ model lead = trt base week week*trt / solution ddfm=satterthwaite;
+ random _residual_ / subject=id type=un;
+ lsmeans trt*week / slicediff=week cl;
+run;
+```
+
+</details>
+
+```{r}
+knitr::include_app("sas/m1b.html", height = "600px")
+```
+:::
+:::
+:::
+
+## **Method 2:** Repeated measures {.smaller}
+
+::: columns
+::: {.column width="50%"}
+### Overall TRT effect
+
+::: panel-tabset
+### EQ
+
+$$Y_{t} = \beta_0 + \beta_1X + \beta_2time + \beta_3time\times X$$
+
+### MODEL {.scrollable style="font-size: 1.25em;"}
+
+```{r}
+#| echo: true
+#| code-fold: true
+m2a <- mmrm(lead ~ trt + follow + follow:trt + 
+               us(week|id), 
+            data = tlc3_l %>% mutate(follow = as.numeric(follow)-1)) 
+
+e2a <- emmeans(m2a, revpairwise ~ trt | follow) %>% 
+   as.data.frame()
+
+summary(m2a)
+```
+
+### DATA
+
+```{r}
+#| echo: true
+#| code-fold: true
+m2a$tmb_data$full_frame %>%
+   select(-`(weights)`) %>% 
+   gt_preview(incl_rownums = TRUE)
+```
+
+### COEFF
+
+```{r}
+#| echo: true
+#| code-fold: true
+summary(m2a)$coefficient %>% 
+   as.data.frame() %>% 
+   rownames_to_column() %>% 
+   select(-df) %>% 
+   gt(rowname_col = "rownames") %>% 
+   fmt_number(columns = 2:4, decimals = 2) %>% 
+   fmt(columns = 5, 
+       fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+   cols_align_decimal() %>% 
+   cols_label(rowname = '')
+```
+
+### SAS {style="font-size: 1.25em;"}
+
+<details>
+
+<summary>Code</summary>
+
+``` sas
+proc glimmix data=tlc3_l noclprint = 10;
+ class id week (ref = first) follow (ref=first) trt (ref = last);
+ model lead = trt follow follow*trt / solution ddfm=satterthwaite;
+ random _residual_ / subject=id type=un;
+ lsmeans trt / diff cl;
+run;
+```
+
+</details>
+
+```{r}
+knitr::include_app("sas/m2a.html", height = "600px")
+```
+:::
+:::
+
+::: {.column width="50%"}
+### Weekly TRT effect
+
+::: panel-tabset
+### EQ
+
+$$Y_{t} = \beta_0 + \beta_1X + \beta_2dummy\_time_1 + \beta_3dummy\_time_2 +\\ \beta_4dumm\_time_1\times X + \beta_5dummy\_time_2 \times X$$
+
+### MODEL {.scrollable style="font-size: 1.25em;"}
+
+```{r}
+#| echo: true
+#| code-fold: true
+
+m2b <- mmrm(lead ~ trt + week + trt: week + us(week|id),
+            data = tlc3_l)
+
+e2b <- emmeans(m2b, revpairwise ~ trt | week) %>% 
+   as.data.frame()
+
+summary(m2b)
+
+```
+
+### DATA
+
+```{r}
+#| echo: true
+#| code-fold: true
+m2b$tmb_data$full_frame %>%
+   select(-`(weights)`) %>% 
+   gt_preview(incl_rownums = TRUE)
+```
+
+### COEFF
+
+```{r}
+#| echo: true
+#| code-fold: true
+summary(m2b)$coefficient %>% 
+   as.data.frame() %>% 
+   rownames_to_column() %>% 
+   select(-df) %>% 
+   gt(rowname_col = "rownames") %>% 
+   fmt_number(columns = 2:4, decimals = 2) %>% 
+   fmt(columns = 5, 
+       fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+   cols_align_decimal() %>% 
+   cols_label(rowname = '')
+```
+
+### SAS {style="font-size: 1.25em;"}
+
+<details>
+
+<summary>Code</summary>
+
+``` sas
+proc glimmix data=tlc3_l noclprint = 10;
+ class id week (ref = first) follow (ref=first) trt (ref = last);
+ model lead = trt follow follow*trt / solution ddfm=satterthwaite;
+ random _residual_ / subject=id type=un;
+ lsmeans trt*follow / slicediff=follow cl;
+run;
+
+```
+
+</details>
+
+```{r}
+knitr::include_app("sas/m2b.html", height = "600px")
+```
+:::
+:::
+:::
+
+## **Method 2:** Repeated measures wo/ treatment {.smaller}
+
+::: columns
+::: {.column width="50%"}
+### Overall TRT effect
+
+::: panel-tabset
+### EQ
+
+$$Y_{t} = \beta_0 + \beta_1time + \beta_2time\times X$$
+
+### MODEL {.scrollable style="font-size: 1.25em;"}
+
+```{r}
+#| echo: true
+#| code-fold: true
+m2c <- mmrm(lead ~ follow + follow:trt + 
+               us(week|id), 
+            data = tlc3_l %>% mutate(follow = as.numeric(follow)-1))
+
+e2f0 <- emmeans(m2c,            ~ trt | follow, at = list(follow = 0)) %>% as.data.frame()
+e2f1 <- emmeans(m2c,revpairwise ~ trt | follow, at = list(follow = 1)) %>% as.data.frame()
+
+e2c <- bind_rows(e2f0 %>% mutate(follow = '0'),
+                 e2f1) 
+
+summary(m2c)
+```
+
+### DATA
+
+```{r}
+#| echo: true
+#| code-fold: true
+m2c$tmb_data$full_frame %>%
+   select(-`(weights)`) %>% 
+   gt_preview(incl_rownums = TRUE)
+```
+
+### COEFF
+
+```{r}
+#| echo: true
+#| code-fold: true
+summary(m2c)$coefficient %>% 
+   as.data.frame() %>% 
+   rownames_to_column() %>% 
+   select(-df) %>% 
+   gt(rowname_col = "rownames") %>% 
+   fmt_number(columns = 2:4, decimals = 2) %>% 
+   fmt(columns = 5, 
+       fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+   cols_align_decimal() %>% 
+   cols_label(rowname = '')
+```
+
+### SAS {style="font-size: 1.25em;"}
+
+<details>
+
+<summary>Code</summary>
+
+``` sas
+proc glimmix data=tlc3_l noclprint = 10;
+ class id week (ref = first) trt (ref = last);
+ model lead = follow follow*trt / solution ddfm=satterthwaite;
+ random _residual_ / subject=id type=un;
+run;
+```
+
+</details>
+
+```{r}
+knitr::include_app("sas/m2c.html", height = "600px")
+```
+:::
+:::
+
+::: {.column width="50%"}
+### Weekly TRT effect
+
+::: panel-tabset
+### EQ
+
+$$Y_{t} = \beta_0 + \beta_1dummytime_1 + \beta_2dummytime_2 + \\ \beta_3dummytime_1 \times X + \beta_4dummytime_2 \times X$$
+
+### MODEL {.scrollable style="font-size: 1.25em;"}
+
+```{r}
+#| echo: true
+#| code-fold: true
+m2d <- mmrm(lead ~ I(week=='4') + I(week=='6') + 
+               I(week=='4' & trt=='Active') + I(week=='6' & trt=='Active') + 
+               us(week|id), 
+            data = tlc3_l)
+
+summary(m2d)
+```
+
+```{r}
+d2d <- 
+   bind_rows(
+      glht(m2d, linfct = matrix(c(1,0,0,0,0),1) ) %>% summary(test = adjusted("none")) %>% tidy(), #         week 0
+      glht(m2d, linfct = matrix(c(1,1,0,0,0),1) ) %>% summary(test = adjusted("none")) %>% tidy(), # Placebo week 4
+      glht(m2d, linfct = matrix(c(1,0,1,0,0),1) ) %>% summary(test = adjusted("none")) %>% tidy(), # Placebo week 6
+      glht(m2d, linfct = matrix(c(1,1,0,1,0),1) ) %>% summary(test = adjusted("none")) %>% tidy(), # Active  week 4
+      glht(m2d, linfct = matrix(c(1,0,1,0,1),1) ) %>% summary(test = adjusted("none")) %>% tidy(), # Active  week 6
+      
+      glht(m2d, linfct = matrix(c(0,0,0,1,0),1) ) %>% summary(test = adjusted("none"))%>% tidy(), # Diff    week 4
+      glht(m2d, linfct = matrix(c(0,0,0,0,1),1) ) %>% summary(test = adjusted("none")) %>% tidy())# Diff    week 6
+
+e2d <- d2d %>% 
+   mutate(week = c('0', '4', '6', '4', '6', '4', '6'), .before = 1) %>% 
+   mutate(trt = c('Both','Placebo','Placebo','Active','Active','.','.'), .after = 1) %>% 
+   mutate(contrast = c(rep('.',5),'Placebo - Active','Placebo - Active'), .after = 2) %>% 
+   select(-null.value) %>% 
+   rename(emmean = estimate,
+          SE = std.error,
+          t.ratio = statistic) %>% 
+   mutate(lower.CL = emmean - SE * qt(.975, df = 98),
+          upper.CL = emmean + SE * qt(.975, df = 98)) 
+```
+
+### DATA
+
+```{r}
+#| echo: true
+#| code-fold: true
+m2d$tmb_data$full_frame %>%
+   select(-`(weights)`) %>% 
+   gt_preview(incl_rownums = TRUE)
+```
+
+### COEFF
+
+```{r}
+#| echo: true
+#| code-fold: true
+summary(m2d)$coefficient %>% 
+   as.data.frame() %>% 
+   rownames_to_column() %>% 
+   select(-df) %>% 
+   gt(rowname_col = "rownames") %>% 
+   fmt_number(columns = 2:4, decimals = 2) %>% 
+   fmt(columns = 5, 
+       fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+   cols_align_decimal() %>% 
+   cols_label(rowname = '')
+```
+
+### SAS {style="font-size: 1.25em;"}
+
+<details>
+
+<summary>Code</summary>
+
+``` sas
+data tlc3_l;
+ set tlc3_l;
+ if week = "4" then week_4 = 1; else week_4 = 0;
+ if week = "6" then week_6 = 1; else week_6 = 0;
+run;
+
+proc glimmix data=tlc3_l noclprint = 10;
+ class id week (ref = first)  trt (ref = last);
+ model lead = week_4 week_6 week_4*trt week_6*trt / solution ddfm=satterthwaite;
+ random _residual_ / subject=id type=un;
+run;
+```
+
+</details>
+
+```{r}
+knitr::include_app("sas/m2d.html", height = "600px")
+```
+:::
+:::
+:::
+
+## **Method 3:** Analysis of changes (not adjusted) {.smaller}
+
+::: columns
+::: {.column width="50%"}
+### Overall TRT effect
+
+::: panel-tabset
+### EQ
+
+$$Y_{t} - Y_{t0} = \beta_0 + \beta_1X$$
+
+### MODEL {.scrollable style="font-size: 1.25em;"}
+
+```{r}
+#| echo: true
+#| code-fold: true
+m3a <- mmrm(diff ~ trt + 
+               us(week|id), 
+            data = tlc3_l %>% filter(week != '0'))
+
+e3a <- emmeans(m3a, revpairwise ~ trt) %>% 
+   as.data.frame()
+
+summary(m3a)
+```
+
+### DATA
+
+```{r}
+#| echo: true
+#| code-fold: true
+m3a$tmb_data$full_frame %>%
+   select(-`(weights)`) %>% 
+   gt_preview(incl_rownums = TRUE)
+```
+
+### COEFF
+
+```{r}
+#| echo: true
+#| code-fold: true
+summary(m3a)$coefficient %>% 
+   as.data.frame() %>% 
+   rownames_to_column() %>% 
+   select(-df) %>% 
+   gt(rowname_col = "rownames") %>% 
+   fmt_number(columns = 2:4, decimals = 2) %>% 
+   fmt(columns = 5, 
+       fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+   cols_align_decimal() %>% 
+   cols_label(rowname = '')
+```
+
+### SAS {style="font-size: 1.25em;"}
+
+<details>
+
+<summary>Code</summary>
+
+``` sas
+proc glimmix data=tlc3_l noclprint = 10;
+ where week ^= 0;
+ class id week (ref = first) trt (ref = last);
+ model diff = trt / solution ddfm=satterthwaite;
+ random _residual_ / subject=id type=un;
+ lsmeans trt / diff cl;
+run;
+```
+
+</details>
+
+```{r}
+knitr::include_app("sas/m3a.html", height = "600px")
+```
+:::
+:::
+
+::: {.column width="50%"}
+### Weekly TRT effect
+
+::: panel-tabset
+### EQ
+
+$$Y_{t} - Y_{t0} = \beta_0 + \beta_1X + \beta_2 time + \beta_3X \times time$$
+
+### MODEL {.scrollable style="font-size: 1.25em;"}
+
+```{r}
+#| echo: true
+#| code-fold: true
+m3b <- mmrm(diff ~ trt + week + trt:week + 
+               us(week|id), 
+            data = tlc3_l %>% filter(week != '0'))
+
+e3b <- emmeans(m3b, revpairwise ~ trt | week) %>% 
+   as.data.frame()
+
+summary(m3b)
+```
+
+### DATA
+
+```{r}
+#| echo: true
+#| code-fold: true
+m3b$tmb_data$full_frame %>%
+   select(-`(weights)`) %>% 
+   gt_preview(incl_rownums = TRUE)
+```
+
+### COEFF
+
+```{r}
+#| echo: true
+#| code-fold: true
+summary(m3b)$coefficient %>% 
+   as.data.frame() %>% 
+   rownames_to_column() %>% 
+   select(-df) %>% 
+   gt(rowname_col = "rownames") %>% 
+   fmt_number(columns = 2:4, decimals = 2) %>% 
+   fmt(columns = 5, 
+       fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+   cols_align_decimal() %>% 
+   cols_label(rowname = '')
+```
+
+### SAS {style="font-size: 1.25em;"}
+
+<details>
+
+<summary>Code</summary>
+
+``` sas
+proc glimmix data=tlc3_l noclprint = 10;
+ where week ^= 0;
+ class id week (ref = first) trt (ref = last);
+ model diff = trt week week*trt / solution ddfm=satterthwaite;
+ random _residual_ / subject=id type=un;
+ lsmeans trt*week / slicediff=week cl;
+run;
+```
+
+</details>
+
+```{r}
+knitr::include_app("sas/m3b.html", height = "600px")
+```
+:::
+:::
+:::
+
+## **Method 3:** Analysis of changes (adjusted) {.smaller}
+
+::: columns
+::: {.column width="50%"}
+### Overall TRT effect
+
+::: panel-tabset
+### EQ
+
+$$Y_{t} - Y_{t0} = \beta_0 + \beta_1X +\beta_2Y_{t0}$$
+
+### MODEL {.scrollable style="font-size: 1.25em;"}
+
+```{r}
+#| echo: true
+#| code-fold: true
+m3c <- mmrm(diff ~ trt + base + 
+               us(week|id), 
+            data = tlc3_l %>% filter(week != '0'))
+
+e3c <- emmeans(m3c, revpairwise ~ trt) %>% 
+   as.data.frame()
+
+summary(m3c)
+```
+
+### DATA
+
+```{r}
+#| echo: true
+#| code-fold: true
+m3c$tmb_data$full_frame %>%
+   select(-`(weights)`) %>% 
+   gt_preview(incl_rownums = TRUE)
+```
+
+### COEFF
+
+```{r}
+#| echo: true
+#| code-fold: true
+summary(m3c)$coefficient %>% 
+   as.data.frame() %>% 
+   rownames_to_column() %>% 
+   select(-df) %>% 
+   gt(rowname_col = "rownames") %>% 
+   fmt_number(columns = 2:4, decimals = 2) %>% 
+   fmt(columns = 5, 
+       fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+   cols_align_decimal() %>% 
+   cols_label(rowname = '')
+```
+
+### SAS {style="font-size: 1.25em;"}
+
+<details>
+
+<summary>Code</summary>
+
+``` sas
+proc glimmix data=tlc3_l noclprint = 10;
+ where week ^= 0;
+ class id week (ref = first) trt (ref = last);
+ model diff = trt base / solution ddfm=satterthwaite;
+ random _residual_ / subject=id type=un;
+ lsmeans trt / diff cl;
+run;
+```
+
+</details>
+
+```{r}
+knitr::include_app("sas/m3c.html", height = "600px")
+```
+:::
+:::
+
+::: {.column width="50%"}
+### Weekly TRT effect
+
+::: panel-tabset
+### EQ
+
+$$Y_{t} - Y_{t0} = \beta_0 + \beta_1X + \beta_2 Y_{t0} + \beta_3X \times time$$
+
+### MODEL {.scrollable style="font-size: 1.25em;"}
+
+```{r}
+#| echo: true
+#| code-fold: true
+m3d <- mmrm(diff ~ trt + base + week + trt:week + 
+               us(week|id), 
+            data = tlc3_l %>% filter(week != '0'))
+
+e3d <- emmeans(m3d, revpairwise ~ trt | week) %>% 
+   as.data.frame()
+
+summary(m3d)
+```
+
+### DATA
+
+```{r}
+#| echo: true
+#| code-fold: true
+m3d$tmb_data$full_frame %>%
+   select(-`(weights)`) %>% 
+   gt_preview(incl_rownums = TRUE)
+```
+
+### COEFF
+
+```{r}
+#| echo: true
+#| code-fold: true
+summary(m3d)$coefficient %>% 
+   as.data.frame() %>% 
+   rownames_to_column() %>% 
+   select(-df) %>% 
+   gt(rowname_col = "rownames") %>% 
+   fmt_number(columns = 2:4, decimals = 2) %>% 
+   fmt(columns = 5, 
+       fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+   cols_align_decimal() %>% 
+   cols_label(rowname = '')
+```
+
+### SAS {style="font-size: 1.25em;"}
+
+<details>
+
+<summary>Code</summary>
+
+``` sas
+proc glimmix data=tlc3_l noclprint = 10;
+ where week ^= 0;
+ class id week (ref = first) trt (ref = last);
+ model diff = trt base week week*trt / solution ddfm=satterthwaite;
+ random _residual_ / subject=id type=un;
+ lsmeans trt*week / slicediff=week cl;
+run;
+```
+
+</details>
+
+```{r}
+knitr::include_app("sas/m3d.html", height = "600px")
+```
+:::
+:::
+:::
+
+## Overall TRT Effect (Combined Results) {.scrollable .smaller}
+
+```{r}
+tlc_all <- tribble(
+   ~table,
+   ~equation,  
+   ~method,                            
+   ~m,
+   ~e,
+   
+   'Overall',
+   "(1a)", 
+   "Longitudinal analysis of covariance",  
+   m1a,
+   e1a,
+   
+   'Overall',
+   "(2a)",                   
+   "Repeated measures analysis",   
+   m2a,
+   e2a,
+   
+   'Overall',
+   "(2c)", 
+   "Repeated measures wo/ treatment",   
+   m2c,
+   e2c,
+   
+   'Overall',
+   "(3a)",   
+   "Analysis of changes (not adjusted)",  
+   m3a,
+   e3a,
+   
+   'Overall',
+   "(3c)",      
+   "Analysis of changes (adjusted)",  
+   m3c,
+   e3c,
+   
+   'Weekly',
+   "(1b)",  
+   "Longitudinal analysis of covariance",   
+   m1b,
+   e1b,
+   
+   'Weekly',
+   "(2b)",                   
+   "Repeated measures analysis",   
+   m2b,
+   e2b,
+   
+   'Weekly',
+   "(2d)", 
+   "Repeated measures wo/ treatmentt",   
+   m2d,
+   e2d,
+   
+   'Weekly',
+   "(3b)",  
+   "Analysis of changes (not adjusted)",   
+   m3b,
+   e3b,
+   
+   'Weekly',
+   "(3d)",      
+   "Analysis of changes (adjusted)",   
+   m3d,
+   e3d) %>% 
+   rowwise() %>% 
+   mutate(data  = list(m$tmb_data$full_frame),
+          subset = attr(m$data,'dataname') %>% str_remove( "%>%, "),
+          model = Reduce( paste, deparse(m$formula_parts$formula) ),
+          call  = list(m$call),
+          coef  = list(summary(m)$coefficient))
+
+e_all <- tlc_all %>% 
+   select(table, equation, method, e) %>% 
+   unnest(cols = e) %>% 
+   relocate(c(week, follow), .after = trt) %>% 
+   relocate(equation, .before = trt) %>% 
+   mutate(week = ifelse(!is.na(follow), ifelse(follow == '0', '0', '4/6'), week)) %>%
+   mutate(week = ifelse(is.na(week), '4/6', week)) %>% 
+   select(-df, -follow)
+
+e_all %>% 
+   filter(contrast != '.') %>% 
+   filter(week != '0') %>% 
+   filter(table == 'Overall') %>% 
+   mutate(equation = str_glue("{equation} {method}")) %>% 
+   gt(groupname_col = 'equation') %>% 
+   fmt_number(columns = c(emmean, lower.CL, upper.CL), decimals = 1) %>% 
+   fmt_number(columns = c(SE, t.ratio), decimals = 2) %>% 
+   fmt(columns = p.value, 
+       fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+   sub_values(columns = week,
+              pattern  = "NA", replacement  = '4/6') %>% 
+   cols_merge_uncert(emmean, SE) %>% 
+   cols_hide(columns = c(method, contrast, table, trt)) %>% 
+   cols_align_decimal() %>% 
+   tab_options(row_group.as_column = TRUE)
+```
+
+::: {style="font-size: 1.75em;"}
+
+::: incremental
+- (1a) overall TRT effect of -5.0 ($\mu$ g/dL)  
+- (2a) wo/ adjustment for baseline differences {{< fa arrow-right-long >}} {{< fa arrow-trend-up >}} overestimation  
+- (2b)  w/ adjustment for baseline differences {{< fa arrow-right-long >}} {{< fa arrow-right-arrow-left >}} similar results to (1a)  
+- (3a) wo/ adjustments for baseline difference {{< fa arrow-right-long >}} {{< fa arrow-trend-down >}} underestimation  
+- (3c)  w/ adjustment for baseline differences {{< fa arrow-right-long >}} {{< fa arrows-left-right-to-line >}} exact same results  
+:::
+
+:::
+
+## Weekly TRT Effect (Combined Results) {visibility="hidden" .scrollable .smaller}
+
+```{r}
+e_all %>% 
+   filter(contrast != '.') %>% 
+   filter(week != '0') %>% 
+   filter(table == 'Weekly') %>% 
+   mutate(equation = str_glue("{equation} {method}")) %>% 
+   gt(groupname_col = 'equation') %>% 
+   fmt_number(columns = c(emmean, lower.CL, upper.CL), decimals = 1) %>% 
+   fmt_number(columns = c(SE, t.ratio), decimals = 2) %>% 
+   fmt(columns = p.value, 
+       fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+   sub_values(columns = week,
+              pattern  = "NA", replacement  = '4/6') %>% 
+   cols_merge_uncert(emmean, SE) %>% 
+   cols_hide(columns = c(method, contrast, table, trt)) %>% 
+   cols_align_decimal() %>% 
+   tab_options(row_group.as_column = TRUE)
+```
+
+## Mathematical equivalence between models {.smaller}
+
+<br>
+
+| `Longitudinal analysis of covariance`                 | `Analysis of changes (adjusted)`                       |
+|:------------------------------------------------------|:-------------------------------------------------------|
+| $$Y_{t} = \beta_0 + \beta_1X + \beta_2Y_{t0}$$        | $$Y_{t} - Y_{t0} = \beta_0 + \beta_1X +\beta_2Y_{t0}$$ |
+|                                                       | $$Y_{t} = \beta_0 + \beta_1X +\beta_2Y_{t0} + Y_{t0}$$ |
+|                                                       | $$Y_{t} = \beta_0 + \beta_1X + (1 + \beta_2) Y_{t0}$$  |
+| $$Y_{t} = 0.74 - 4.98 \times X + 0.83  \times Y_{t0}$$ | $$Y_{t} = 0.74 - 4.98 \times X - 0.17 \times Y_{t0}$$ |
+
+## TRT Effect (Combined Results Interactive) {.smaller .scrollable}
+
+```{r}
+pacman::p_load(reactable, reactablefmtr)
+
+d <- tlc_all %>% 
+   select(table, equation, method, e, data, coef) %>% 
+   unnest(cols = e) %>% 
+   relocate(c(week, follow), .after = trt) %>% 
+   relocate(equation, .before = trt) %>% 
+   mutate(week = ifelse(!is.na(follow), ifelse(follow == '0', '0', '4/6'), week)) %>%
+   mutate(week = ifelse(is.na(week), '4/6', week)) %>% 
+   select(-df, -follow) %>% 
+   filter(contrast != '.') %>% 
+   filter(week != '0') 
+
+d %>% 
+   mutate(equation = str_glue("{equation} {method}")) %>% 
+   reactable( .,
+              theme = fivethirtyeight(
+                 font_size = 20,
+                 header_font_size = 18
+              ),
+              bordered = TRUE,
+              highlight = TRUE,
+              compact = TRUE,
+              searchable = TRUE,
+              # wrap = FALSE,
+              groupBy = c("table"),
+              defaultExpanded = FALSE,
+              defaultSorted = c("table", "equation"),
+              defaultColDef = colDef(minWidth = 50),
+              columns = list(
+                 
+                 trt      = colDef(show = FALSE),
+                 contrast = colDef(show = FALSE),
+                 method   = colDef(show = FALSE),
+                 
+                 data = colDef(
+                    cell = function(value){
+                       if (length(value)>1) htmltools::tags$button("")
+                    },
+                    details = function(index) {
+                       reactable(.$data[[index]],
+                                 defaultExpanded = FALSE,
+                                 compact = TRUE,
+                                 fullWidth = FALSE,
+                                 theme = fivethirtyeight(),
+                                 defaultColDef = colDef(format = colFormat(digits = 1))
+                       )
+                    }
+                 ),
+                 
+                 coef = colDef(
+                    html = TRUE,
+                    cell = function(value){
+                       if (length(value)>1) htmltools::tags$button("")
+                    },
+                    details = function(index) {
+                       .$coef[[index]] %>%
+                          as.data.frame() %>% 
+                          rownames_to_column() %>% 
+                          select(-df) %>% 
+                          gt(rowname_col = "rownames") %>% 
+                          fmt_number(columns = 2:4, decimals = 2) %>% 
+                          fmt(columns = 5, 
+                              fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+                          cols_label(rowname = '') %>% 
+                          as_raw_html()
+                    }
+                 ),
+                 table    = colDef(minWidth = 75),
+                 equation = colDef(name = '',
+                                   minWidth = 225),
+                 emmean   = colDef( format = colFormat(digits = 1)),
+                 SE       = colDef( format = colFormat(digits = 2)),
+                 lower.CL = colDef( format = colFormat(digits = 1)),
+                 upper.CL = colDef( format = colFormat(digits = 2)),
+                 t.ratio  = colDef( format = colFormat(digits = 2)),
+                 p.value  = colDef( cell = function(value) gtsummary::style_pvalue(value, digits = 2))
+                 
+              )
+   )
+```
+
+## TRT Effect w/ Missing (Combined Results Interactive) {.smaller .scrollable}
+
+```{r}
+dmiss <- import('tlcmiss/tlcmiss_all.rds') %>% 
+   select(table, equation, method, e, data, coef) %>% 
+   unnest(cols = e) %>% 
+   relocate(c(week, follow), .after = trt) %>% 
+   relocate(equation, .before = trt) %>% 
+   mutate(week = ifelse(!is.na(follow), ifelse(follow == '0', '0', '4/6'), week)) %>%
+   mutate(week = ifelse(is.na(week), '4/6', week)) %>% 
+   select(-df, -follow) %>% 
+   filter(contrast != '.') %>% 
+   filter(week != '0') 
+
+dmiss %>% 
+   mutate(equation = str_glue("{equation} {method}")) %>% 
+   reactable( .,
+              theme = fivethirtyeight(
+                 font_size = 20,
+                 header_font_size = 18
+              ),
+              bordered = TRUE,
+              highlight = TRUE,
+              compact = TRUE,
+              searchable = TRUE,
+              # wrap = FALSE,
+              groupBy = c("table"),
+              defaultExpanded = FALSE,
+              defaultSorted = c("table", "equation"),
+              defaultColDef = colDef(minWidth = 50),
+              columns = list(
+                 
+                 trt      = colDef(show = FALSE),
+                 contrast = colDef(show = FALSE),
+                 method   = colDef(show = FALSE),
+                 
+                 data = colDef(
+                    cell = function(value){
+                       if (length(value)>1) htmltools::tags$button("")
+                    },
+                    details = function(index) {
+                       reactable(.$data[[index]],
+                                 defaultExpanded = FALSE,
+                                 compact = TRUE,
+                                 fullWidth = FALSE,
+                                 theme = fivethirtyeight(),
+                                 defaultColDef = colDef(format = colFormat(digits = 1))
+                       )
+                    }
+                 ),
+                 
+                 coef = colDef(
+                    html = TRUE,
+                    cell = function(value){
+                       if (length(value)>1) htmltools::tags$button("")
+                    },
+                    details = function(index) {
+                       .$coef[[index]] %>%
+                          as.data.frame() %>% 
+                          rownames_to_column() %>% 
+                          select(-df) %>% 
+                          gt(rowname_col = "rownames") %>% 
+                          fmt_number(columns = 2:4, decimals = 2) %>% 
+                          fmt(columns = 5, 
+                              fns = function(x) gtsummary::style_pvalue(x, digits = 2)) %>% 
+                          cols_label(rowname = '') %>% 
+                          as_raw_html()
+                    }
+                 ),
+                 
+                 table    = colDef(minWidth = 75),
+                 equation = colDef(name = '',
+                                   minWidth = 225),
+                 emmean   = colDef( format = colFormat(digits = 1)),
+                 SE       = colDef( format = colFormat(digits = 2)),
+                 lower.CL = colDef( format = colFormat(digits = 1)),
+                 upper.CL = colDef( format = colFormat(digits = 2)),
+                 t.ratio  = colDef( format = colFormat(digits = 2)),
+                 p.value  = colDef( cell = function(value) gtsummary::style_pvalue(value, digits = 2))
+                 
+              )
+   ) 
+```
+
+## [Different ways to estimate treatment effects in randomised controlled trials](https://www.sciencedirect.com/science/article/pii/S2451865417301849){preview-link="true"} {{< fa file-lines >}} {.smaller}
+
+![](doc/Different%20ways%20to%20estimate%20treatment%20effects%20RCT.png){fig-align="center"}
+
+# Generalized additive mixed models (GAMMs)
+
+## Generalized additive models (GAM)
+
+GAM is a powerful and yet simple technique
+
+::: incremental
+
+- Easy to interpret (Similar to GLM)
+
+- Flexible predictor functions can uncover hidden patterns in the data
+
+- Regularization of predictor functions helps avoid overfitting
+
+![](pic/tradeoff-slider.png){width=50%}
+
+:::
+
+## (Generalized) Linear Models
+
+$$y_i \sim \mathcal{N}(\mu_i, \sigma^2)$$
+
+$$\mu_i = \beta_0 + \beta_1 \mathtt{month}_{i} + \beta_2 \mathtt{month}^2_{1i} + \cdots + \beta_j \mathtt{month}^j_{i}$$
+
+Assumptions
+
+1. linear effects of covariates are good approximation of the true effects
+
+An **additive** model address the first of these
+
+## How is a GAM different?
+
+$$\begin{align*}
+y_i &\sim \mathcal{D}(\mu_i, \theta) \\ 
+\mathbb{E}(y_i) &= \mu_i = g(\eta_i)^{-1}
+\end{align*}$$
+
+We model the mean of data as a sum of linear terms:
+
+$$\eta_i = \beta_0 +\sum_j \color{red}{ \beta_j x_{ji}}$$
+
+A GAM is a sum of _smooth functions_ or _smooths_
+
+$$\eta_i = \beta_0 + \sum_j \color{red}{f_j(x_{ji})}$$
+
+## [Fitting a GAM in R](https://rdrr.io/cran/mgcv/){preview-link="true"}
+
+```r
+m3a <- gamm(anyexac2 ~ s(month, bs = 'cc'), 
+              data = nejm, verbosePQL = FALSE,
+              random  =  list(studyid = ~1), 
+              family = binomial, 
+              control = list(maxIter = 100), 
+              method = 'REML')
+
+m3  <- gamm(anyexac2 ~ group + s(month, bs = 'cc', by = group), 
+             data = nejm, verbosePQL = FALSE,
+             random  =  list(studyid = ~1), f
+             amily = binomial, 
+             control = list(maxIter = 100), 
+             method = 'REML')
+```
+
+`s()` terms are smooths of one or more variables
+
+`bs = 'cc'` terms specifies a cyclic cubic regression spline
+
+$$\eta_i = \beta_0 + f(\mathtt{month}_i)$$
+
+## Seasonal Exacerbations <small>Randomized double blind placebo control (RDBPC)</small> {.smaller}
+
+```{r}
+pacman::p_load(tidyverse, rio)
+pacman::p_load(mgcv, gratia)
+pacman::p_load(geomtextpath)
+pacman::p_load(ggpointless)
+pacman::p_load(patchwork)
+```
+
+```{r}
+nejm <- import("./gamm/dat/nejm_util_month.rds") %>% 
+   mutate(studyid  = factor(studyid)) %>% 
+   droplevels()
+```
+
+```{r}
+pacman::p_load(gtsummary, labelled)
+
+nejm_w <- nejm %>% 
+   pivot_wider(id_cols = c(studyid, group),
+               names_from = month,
+               values_from = anyexac2,
+               values_fn = max)
+
+lbs <-  tibble(month = 1:12,
+               label = month.abb)
+lbs <- setNames(as.list(lbs$label), lbs$month)
+
+nejm_w <- nejm_w %>% 
+   set_variable_labels(.labels = lbs, .strict = FALSE)
+
+tbl_summary(data = nejm_w,
+            by = group,
+            missing = 'no',
+            include = c("1","2","3","4","5","6","7","8","9","10","11","12"),
+            digits = list(everything() ~ 1),
+            statistic = list(all_categorical() ~ "{p}%")) %>% 
+   add_difference(pvalue_fun = function(x) style_pvalue(x, digits = 2)) %>% 
+   add_overall() %>% 
+   add_n() %>% 
+   bold_p() %>% 
+   modify_header(label = '**Month**',
+                 all_stat_cols(TRUE) ~ "**{level}**" ) %>% 
+   modify_spanning_header(all_stat_cols(FALSE) ~ "**Treatment**") %>% 
+   modify_footnote(c(all_stat_cols()) ~ NA)
+```
+
+## Additive Model {.smaller}
+
+```{r}
+#| name: gamm-models
+#| echo: true
+#| code-fold: true
+m3a <- gamm(anyexac2 ~ s(month, bs = 'cc'), data = nejm, verbosePQL = FALSE,
+            random  =  list(studyid = ~1), family = binomial, control = list(maxIter = 100), method = 'REML')
+
+m3  <- gamm(anyexac2 ~ group + s(month, bs = 'cc', by = group), data = nejm, verbosePQL = FALSE,
+            random  =  list(studyid = ~1), family = binomial, control = list(maxIter = 100), method = 'REML')
+```
+
+::: columns
+::: {.column width="50%"}
+<h3>OVERALL</h3>
+
+```{r}
+#| name: fig-gamm-overall
+#| fig.dpi: 300
+#| fig.height: 8
+#| fig.width:  9
+#| fig.align: 'center'
+d3a <- expand_grid(month = seq(1, 12, length=100)) %>% 
+   bind_cols(
+      predict.gam(m3a$gam, ., se.fit = T, type='response')) %>% 
+   mutate( lower = fit- qnorm(0.975)*se.fit,
+           upper = fit+ qnorm(0.975)*se.fit )
+
+f3a <- ggplot(data  =  d3a,
+              aes(x  =  month, y  =  fit, label = 'Control & Intervention')) +
+   geom_textline(size = 8, vjust = -0.15, hjust = 0.98) + 
+   geom_line(linewidth  =  1) +
+   geom_ribbon(aes( ymin  = lower, ymax  =  upper,  alpha  =  0.5))+
+   scale_y_continuous(limits  =  c(0, 0.15),
+                      minor_breaks  =  FALSE,
+                      expand  =  c(0, 0.01)) + 
+   scale_x_continuous(breaks  =  seq(1, 12, 1),
+                      labels  =  c("J","F","M","A","M","J","J","A","S","O","N","D"),
+                      expand  =  c(0.01, 0.01),
+                      minor_breaks  =  FALSE) +
+   labs(x  =  "Month",
+        y  =  "Proportion of Exacerbations",
+        title  =  ) +
+   theme_bw(base_size = 20) +
+   theme(legend.position  =  "none",
+         panel.grid.minor  =  element_blank())
+
+f3a
+```
+:::
+
+::: {.column width="50%"}
+<h3>BY TREATMENT</h3>
+
+```{r}
+#| name: fig-gamm-bytrt
+#| fig.dpi: 300
+#| fig.height: 8
+#| fig.width:  9
+#| fig.align: 'center'
+
+d3 <- expand_grid(month = seq(1, 12, length=100),
+                  group = c('Control','Intervention')) %>% 
+   bind_cols(
+      predict.gam(m3$gam, ., se.fit = T, type='response')) %>% 
+   mutate( lower = fit- qnorm(0.975)*se.fit,
+           upper = fit+ qnorm(0.975)*se.fit ) 
+
+f3 <- ggplot(data  =  d3,
+             aes(x  =  month, y  =  fit, color  =  group, label = group)) +
+   geom_textline(size = 8, vjust = -0.15, hjust = 0.98) + 
+   geom_line(linewidth  =  1) +
+   geom_ribbon(aes( ymin  =  lower, ymax  =  upper, 
+                    color  =  NULL, fill  =  group, alpha  =  0.5))+
+   scale_y_continuous(limits  =  c(0.0, 0.15),
+                      minor_breaks  =  FALSE) + 
+   scale_x_continuous(breaks  =  seq(1, 12, 1),
+                      labels  =  c("J","F","M","A","M","J","J","A","S","O","N","D"),
+                      expand  =  c(0.01, 0.01),
+                      minor_breaks  =  FALSE) +
+   scale_color_brewer(type  =  'qual', palette  =  'Dark2') + 
+   scale_fill_brewer(type  =  'qual', palette  =  'Dark2') + 
+   labs(x  =  "Month",
+        y  =  "Proportion of Exacerbations",
+        title  =  ) +
+   theme_bw(base_size = 20) +
+   theme(legend.position  =  "none",
+         panel.grid.minor  =  element_blank())
+
+f3
+```
+:::
+:::
+
+## Derivatives {.smaller}
+
+```{r}
+#| name: fig-gamm-derivatives
+#| echo: true
+#| code-fold: true
+#| fig.dpi: 300
+#| fig.height: 12
+#| fig.width:  24
+#| fig.align: 'center'
+
+# DERIVATVES
+f3a_d1 <- derivatives(m3a,
+                      level = 0.68,
+                      type = 'central',
+                      interval = "simultaneous",
+                      order = 1) %>% 
+   draw() +
+   geom_pointless(aes(color = after_stat(location)),
+                  location = c("min","max"),
+                  size = 3,
+                  color = 'gray25') +
+   geom_hline(yintercept = 0, color = 'gray50') + 
+   scale_x_continuous(breaks  =  seq(1, 12, 1),
+                      labels  =  c("J","F","M","A","M","J","J","A","S","O","N","D"),
+                      expand  =  c(0.01, 0.01),
+                      minor_breaks  =  FALSE) +
+   scale_y_continuous(limits = c(-0.8, 0.8) ) +
+   labs(x  =  "Month",
+        y  = "1st Derivative (Rate of Change)",
+        title = NULL) +
+   theme_bw(base_size = 20) +
+   theme(legend.position  =  "none",
+         panel.grid.minor  =  element_blank())
+
+f3a_d2 <- derivatives(m3a,
+                      level = 0.68,
+                      type = 'central',
+                      interval = "simultaneous",
+                      order = 2) %>% 
+   draw() +
+   geom_pointless(aes(color = after_stat(location)),
+                  location = c("min","max"),
+                  size = 3,
+                  color = 'gray25') +
+   geom_hline(yintercept = 0, color = 'gray50') + 
+   scale_x_continuous(breaks  =  seq(1, 12, 1),
+                      labels  =  c("J","F","M","A","M","J","J","A","S","O","N","D"),
+                      expand  =  c(0.01, 0.01),
+                      minor_breaks  =  FALSE) +
+   scale_y_continuous(limits = c(-1.2, 1.2) ) +
+   labs(x  =  "Month",
+        y  = "2nd Derivative (Inflection Point)",
+        title = NULL) +
+   theme_bw(base_size = 20) +
+   theme(legend.position  =  "none",
+         panel.grid.minor  =  element_blank())
+
+# DERIVATVES
+d3d1 <- derivatives(m3,
+                    level = 0.68,
+                    type = 'central',
+                    interval = "simultaneous",
+                    order = 1) %>% 
+   mutate(group = factor(smooth, labels = c("Control","Intervention")))
+
+f3_d1 <- ggplot(data  =  d3d1,
+                aes(x  =  data, y  =  derivative, color  =  group, label = group)) +
+   geom_pointless(aes(color = after_stat(location)),
+                  location = c("min","max"),
+                  color = 'gray25',
+                  size = 3) + 
+   facet_wrap(~ group) +
+   geom_line(linewidth  =  1) +
+   geom_ribbon(aes( ymin  =  lower, ymax  =  upper, 
+                    color  =  NULL, fill  =  smooth, alpha  =  0.5))+
+   scale_x_continuous(breaks  =  seq(1, 12, 1),
+                      labels  =  c("J","F","M","A","M","J","J","A","S","O","N","D"),
+                      expand  =  c(0.01, 0.01),
+                      minor_breaks  =  FALSE) +
+   scale_y_continuous(limits = c(-0.8, 0.8) ) +
+   scale_color_brewer(type  =  'qual', palette  =  'Dark2') + 
+   scale_fill_brewer(type  =  'qual', palette  =  'Dark2') + 
+   labs(x  =  "Month",
+        y  =  "1st Derivative (Rate of Change",
+        title  =  ) +
+   theme_bw(base_size = 20) +
+   theme(legend.position  =  "none",
+         panel.grid.minor  =  element_blank())
+
+d3d2 <- derivatives(m3,
+                    level = 0.68,
+                    type = 'central',
+                    interval = "simultaneous",
+                    order = 2) %>% 
+   mutate(group = factor(smooth, labels = c("Control","Intervention")))
+
+f3_d2 <- ggplot(data  =  d3d2,
+                aes(x  =  data, y  =  derivative, color  =  group, label = group)) +
+   geom_pointless(aes(color = after_stat(location)),
+                  location = c("min","max"),
+                  color = 'gray25',
+                  size = 3) + 
+   facet_wrap(~ group) +
+   geom_line(linewidth  =  1) +
+   geom_ribbon(aes( ymin  =  lower, ymax  =  upper, 
+                    color  =  NULL, fill  =  smooth, alpha  =  0.5))+
+   scale_x_continuous(breaks  =  seq(1, 12, 1),
+                      labels  =  c("J","F","M","A","M","J","J","A","S","O","N","D"),
+                      expand  =  c(0.01, 0.01),
+                      minor_breaks  =  FALSE) +
+   scale_y_continuous(limits = c(-1.2, 1.2) ) +
+   scale_color_brewer(type  =  'qual', palette  =  'Dark2') + 
+   scale_fill_brewer(type  =  'qual', palette  =  'Dark2') + 
+   labs(x  =  "Month",
+        y  =  "2nd Derivative (Inflection Point)",
+        title  =  ) +
+   theme_bw(base_size = 20) +
+   theme(legend.position  =  "none",
+         panel.grid.minor  =  element_blank())
+
+design <- "
+144
+255
+366
+"
+
+f3a + 
+   f3a_d1 + 
+   f3a_d2 + 
+   (f3+facet_wrap(~group) + theme(strip.background = element_blank(),strip.text.x = element_blank())) + 
+   (f3_d1 + theme(strip.background = element_blank(),strip.text.x = element_blank())) + 
+   (f3_d2 + theme(strip.background = element_blank(),strip.text.x = element_blank())) +
+   plot_layout(design = design) 
+```
+
+## Smooth Differences {.smaller}
+
+```{r}
+#| name: fig-smooth-differences
+#| echo: true
+#| code-fold: true
+#| fig.dpi: 300
+#| fig.height: 12
+#| fig.width:  14
+#| fig-align: center
+
+d2s1 <- smooth_samples(m3$gam,
+                       n = 500,
+                       data = d1,
+                       seed = 123) %>% 
+   rename(month = .x1) %>% 
+   group_by(draw, month) %>% 
+   summarise(diff = value[1]-value[2]) %>% 
+   mutate(diff = (diff + 0.35)/10 )
+
+
+f3_s1 <- ggplot(data  =  d2s1,
+                aes(x  =  month, y  =  diff, group = draw, label = 'Difference')) +
+   geom_line(linewidth  =  0.25, alpha = 0.25) +
+   geom_hline(yintercept = 0, color = 'gray50') +
+   scale_y_continuous(limits  =  c(-0.05, 0.12),
+                      minor_breaks  =  FALSE,
+                      expand  =  c(0, 0.01)) + 
+   scale_x_continuous(breaks  =  seq(1, 12, 1),
+                      labels  =  c("J","F","M","A","M","J","J","A","S","O","N","D"),
+                      expand  =  c(0.01, 0.01),
+                      minor_breaks  =  FALSE) +
+   labs(x  =  "Month",
+        y  =  "Difference between smooths",
+        title  =  ) +
+   theme_bw(base_size = 20) +
+   theme(legend.position  =  "none",
+         panel.grid.minor  =  element_blank())
+
+s1b <- difference_smooths(m3$gam, 
+                          smooth = "s(month)",
+                          ci_level = 0.95) %>% 
+   mutate(across(c(diff, lower, upper), ~(.x + 0.35)/10)) 
+
+f3_s2 <- ggplot(data  =  s1b,
+                aes(x  =  month, y  =  diff,  color = (lower>0) ) ) +
+   geom_hline(yintercept = 0, color = 'gray50') +
+   geom_line(aes(group = 1), linewidth  = 2) +
+   geom_ribbon(data = s1b,
+               inherit.aes = FALSE,
+               aes(x = month, ymin  = lower, ymax  =  upper,  alpha  =  0.5))+
+   scale_y_continuous(limits  =  c(-0.05, 0.12),
+                      minor_breaks  =  FALSE,
+                      expand  =  c(0, 0.01)) + 
+   scale_x_continuous(breaks  =  seq(1, 12, 1),
+                      labels  =  c("J","F","M","A","M","J","J","A","S","O","N","D"),
+                      expand  =  c(0.01, 0.01),
+                      minor_breaks  =  FALSE) +
+   labs(x  =  "Month",
+        y  =  "Difference between smooths",
+        title  =  NULL) +
+   theme_bw(base_size = 20) +
+   theme(legend.position  =  "none",
+         panel.grid.minor  =  element_blank())
+
+f3/f3_s1/f3_s2
+```
+
+#  {background-image="gamm/journal_collage.jpg" background-size="cover"}
+
+## ![](gamm/nejm/nejm.png) {background-image="gamm/nejm/nejm_abstract.png" background-position="center" background-size="auto 75%"}
+
+## ![](gamm/nejm/nejm.png) {background-image="gamm/nejm/nejm_exac.png" background-position="center" background-size="auto 75%"}
+
+## ![](gamm/prose/jaci_logo.jpg) {background-image="gamm/prose/prose_abstract.png" background-position="center" background-size="auto 75%"}
+
+## ![](gamm/prose/jaci_logo.jpg) {background-image="gamm/prose/prose_exac.png" background-position="center" background-size="auto 75%"}
+
+## ![](gamm/lancet/lancet_logo.png) {background-image="gamm/lancet/lancet_abstract.png" background-position="center" background-size="auto 75%"}
+
+## ![](gamm/lancet/lancet_logo.png) {background-image="gamm/lancet/lancet_exac.png" background-position="center" background-size="auto 75%"}
+
+## ![](gamm/lancet/lancet_logo.png) {background-image="gamm/lancet/lancet_exac_2.png" background-position="center" background-size="auto 75%"}
+
+# Data Visualizations for Clinical Trials Reporting {{< fa chart-column >}}
+
+<br> <smaller> Visualizations for the Special Interest Group at [Statisticians in the Pharmaceutical Industry (PSI)](https://www.psiweb.org/){preview-link="true"}
+
+## [Quality of life outcomes in a cancer trial](https://agstn.github.io/qlq-c30/qlq-c30_flexdashboard.html){preview-link="true"}
+
+![](pic/cancer_trial.png){fig-align="center"} \## [Patient Profiler (Proof of Concept)](https://agstn.github.io/PatientProfiler/PatientProfiler.html){preview-link="true"}
+
+![](pic/Patient_Profiler.png){fig-align="center"}
+
+## [Sensitivity Analyses of HiSCR definition on the results](https://rpubs.com/acalatroni/899939){preview-link="false" target="_blank"}
+
+![](pic/HiSCR_response.png){fig-align="center"}
+
+## [Relative Importance of Regressors in Linear Models](https://github.com/agstn/WW/tree/main/2022-08-10){preview-link="false" target="_blank"}
+
+![](pic/ed5d_relaimpo.png){fig-align="center"}
+
+## [Continuous Glucose Monitoring (CGM) Visualization](https://agstn.github.io/CGM/){preview-link="true"}
+
+![](pic/CGM_Visualization.png){fig-align="center"}
+
+## [Prediction of Residual Tumor model w/ ModelStudio](https://rpubs.com/acalatroni/709891){preview-link="false" target="_blank"}
+
+![](pic/Prediction_Interactive.png){fig-align="center"}
+
+## [Competing Risk Tables Validation Visualization](https://agstn.github.io/nijman/nijman_tables_flx.html){preview-link="true"}
+
+![](pic/Competing_Risk.png){fig-align="center"}
+
+# [All Analyses {{< fa brands github size=1.5x >}} \@agstn/WW](https://github.com/agstn/WW){preview-link="false" target="_blank"}
+
+# {{< fa person-circle-question size=4x >}} {style="text-align: center;"}
+
+# Thanks! [{{< fa brands twitter size=1.5x >}}](https://twitter.com/acalatr){preview-link="false" target="_blank"} [{{< fa brands github size=1.5x >}}](https://github.com/agstn){preview-link="false" target="_blank"} [{{< fa envelope size=1.5x >}}](mailto:acalatroni@gmail.com){preview-link="false" target="_blank"}
+
+## R Session Information for reproducibility {{< fa cubes >}} {.smaller}
+
+::: columns
+::: {.column width="50%"}
+```{r}
+df_session_platform <- devtools::session_info()$platform %>% 
+   unlist(.) %>% 
+   as.data.frame(.) %>% 
+   rownames_to_column(.)
+
+colnames(df_session_platform) <- c("Setting", "Value")
+
+gt(df_session_platform) %>% 
+   tab_header( title = md("R environment"))
+
+```
+:::
+
+::: {.column width="50%"}
+```{r}
+df_session_packages <- devtools::session_info()$packages %>% 
+   as.data.frame(.) %>% 
+   filter(attached == TRUE) %>% 
+   dplyr::select(loadedversion, date) %>% 
+   rownames_to_column
+
+colnames(df_session_packages) <- c("Package", "Loaded version", "Date")
+
+htmltools::div(style='height:825px; overflow-y: scroll',
+               gt(df_session_packages) %>% 
+                  tab_header( title = md("R Packages"))
+)
+```
+:::
+:::
