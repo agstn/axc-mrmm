@@ -1,0 +1,135 @@
+1                                                          The SAS System                             14:43 Monday, January 23, 2023
+
+NOTE: Copyright (c) 2016 by SAS Institute Inc., Cary, NC, USA. 
+NOTE: SAS (r) Proprietary Software 9.4 (TS1M6) 
+      Licensed to RHO INCORPORATED NODE 1-4, Site 70170299.
+NOTE: This session is executing on the X64_SR12R2  platform.
+
+
+
+NOTE: Analytical products:
+      
+      SAS/STAT 15.1
+      SAS/IML 15.1
+
+NOTE: Additional host information:
+
+ X64_SR12R2 WIN 6.3.9600  Server
+
+NOTE: SAS initialization used:
+      real time           0.11 seconds
+      cpu time            0.10 seconds
+      
+NOTE: Libref SASDATA successfully assigned from logical server.
+NOTE: Libref STPSAMP successfully assigned from logical server.
+NOTE: Libref SASTST94 successfully assigned from logical server.
+NOTE: Libref SASTST94 refers to the same physical library as SASHELP.
+
+NOTE: AUTOEXEC processing beginning; file is \\drive_i\SAS94GridConfig\Lev1\SASAppPGRD94\appserver_autoexec.sas.
+
+
+NOTE: AUTOEXEC processing completed.
+
+1          proc import datafile='h:\tlc3_l.csv' out=tlc3_l replace;
+1        !                                                          run;
+
+NOTE: Unable to open parameter catalog: SASUSER.PARMS.PARMS.SLIST in update mode. Temporary parameter values will be saved to 
+WORK.PARMS.PARMS.SLIST.
+2           /**********************************************************************
+3           *   PRODUCT:   SAS
+4           *   VERSION:   9.4
+5           *   CREATOR:   External File Interface
+6           *   DATE:      23JAN23
+7           *   DESC:      Generated SAS Datastep Code
+8           *   TEMPLATE SOURCE:  (None Specified.)
+9           ***********************************************************************/
+10             data WORK.TLC3_L    ;
+11             %let _EFIERR_ = 0; /* set the ERROR detection macro variable */
+12             infile 'h:\tlc3_l.csv' delimiter = ',' MISSOVER DSD lrecl=32767 firstobs=2 ;
+13                informat id best32. ;
+14                informat trt $7. ;
+15                informat week best32. ;
+16                informat lead best32. ;
+17                informat base best32. ;
+18                informat diff best32. ;
+19                informat follow best32. ;
+20                format id best12. ;
+21                format trt $7. ;
+22                format week best12. ;
+23                format lead best12. ;
+24                format base best12. ;
+2                                                          The SAS System                             14:43 Monday, January 23, 2023
+
+25                format diff best12. ;
+26                format follow best12. ;
+27             input
+28                         id
+29                         trt  $
+30                         week
+31                         lead
+32                         base
+33                         diff
+34                         follow
+35             ;
+36             if _ERROR_ then call symputx('_EFIERR_',1);  /* set ERROR detection macro variable */
+37             run;
+
+NOTE: The infile 'h:\tlc3_l.csv' is:
+      Filename=h:\tlc3_l.csv,
+      RECFM=V,LRECL=32767,File Size (bytes)=8824,
+      Last Modified=23Jan2023:14:14:39,
+      Create Time=19Jan2023:10:22:58
+
+NOTE: 300 records were read from the infile 'h:\tlc3_l.csv'.
+      The minimum record length was 21.
+      The maximum record length was 43.
+NOTE: The data set WORK.TLC3_L has 300 observations and 7 variables.
+NOTE: Compressing data set WORK.TLC3_L increased size by 100.00 percent. 
+      Compressed is 2 pages; un-compressed would require 1 pages.
+NOTE: DATA statement used (Total process time):
+      real time           0.03 seconds
+      cpu time            0.01 seconds
+      
+
+300 rows created in WORK.TLC3_L from h:\tlc3_l.csv.
+  
+  
+  
+NOTE: WORK.TLC3_L data set was successfully created.
+NOTE: The data set WORK.TLC3_L has 300 observations and 7 variables.
+NOTE: PROCEDURE IMPORT used (Total process time):
+      real time           0.14 seconds
+      cpu time            0.10 seconds
+      
+
+38         
+39         ods html file='h:\m3a.html' style=HTMLEncore;
+NOTE: Writing HTML Body file: h:\m3a.html
+40         
+41         proc glimmix data=tlc3_l noclprint = 10;
+42          where week ^= 0;
+43          class id week (ref = first) trt (ref = last);
+44          model diff = trt / solution ddfm=satterthwaite;
+45          random _residual_ / subject=id type=un;
+46          lsmeans trt / diff cl;
+47         run;
+
+
+
+WARNING: Class levels for id are not printed because of excessive size.
+NOTE: Convergence criterion (ABSGCONV=0.00001) satisfied.
+3                                                          The SAS System                             14:43 Monday, January 23, 2023
+
+NOTE: The PROCEDURE GLIMMIX printed pages 1-3.
+NOTE: PROCEDURE GLIMMIX used (Total process time):
+      real time           0.07 seconds
+      cpu time            0.07 seconds
+      
+
+48         
+49         ods html close;
+NOTE: SAS Institute Inc., SAS Campus Drive, Cary, NC USA 27513-2414
+NOTE: The SAS System used:
+      real time           0.51 seconds
+      cpu time            0.42 seconds
+      

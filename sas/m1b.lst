@@ -1,0 +1,137 @@
+                                                           The SAS System                         14:39 Monday, January 23, 2023   1
+
+                                                       The GLIMMIX Procedure
+
+                                                         Model Information
+
+                                    Data Set                      WORK.TLC3_L                  
+                                    Response Variable             lead                         
+                                    Response Distribution         Gaussian                     
+                                    Link Function                 Identity                     
+                                    Variance Function             Default                      
+                                    Variance Matrix Blocked By    id                           
+                                    Estimation Technique          Restricted Maximum Likelihood
+                                    Degrees of Freedom Method     Satterthwaite                
+
+
+                                                      Class Level Information
+ 
+                                                 Class    Levels    Values
+
+                                                 id          100    not printed    
+                                                 week          2    6 4            
+                                                 trt           2    Active Placebo 
+
+
+                                              Number of Observations Read         200
+                                              Number of Observations Used         200
+
+
+                                                             Dimensions
+
+                                                 R-side Cov. Parameters           3
+                                                 Columns in X                    10
+                                                 Columns in Z per Subject         0
+                                                 Subjects (Blocks in V)         100
+                                                 Max Obs per Subject              2
+
+
+                                                     Optimization Information
+
+                                          Optimization Technique        Dual Quasi-Newton
+                                          Parameters in Optimization    3                
+                                          Lower Boundaries              2                
+                                          Upper Boundaries              0                
+                                          Fixed Effects                 Profiled         
+                                          Starting From                 Data             
+
+
+                                                          Iteration History
+ 
+                                                                     Objective                         Max
+                          Iteration    Restarts    Evaluations        Function          Change    Gradient
+
+                                  0           0              4    1259.1206644       .            0.001966
+                                  1           0              2    1259.1206402      0.00002416    0.001352
+                                  2           0              3    1259.1206358      0.00000442    0.000455
+                                  3           0              3    1259.1206352      0.00000059    0.000243
+                                                           The SAS System                         14:39 Monday, January 23, 2023   2
+
+                                                       The GLIMMIX Procedure
+
+                                           Convergence criterion (GCONV=1E-8) satisfied.          
+
+
+                                                           Fit Statistics
+
+                                                -2 Res Log Likelihood        1259.12
+                                                AIC  (smaller is better)     1265.12
+                                                AICC (smaller is better)     1265.25
+                                                BIC  (smaller is better)     1272.94
+                                                CAIC (smaller is better)     1275.94
+                                                HQIC (smaller is better)     1268.28
+                                                Generalized Chi-Square        195.00
+                                                Gener. Chi-Square / DF          1.00
+
+
+                                                   Covariance Parameter Estimates
+ 
+                                             Cov                               Standard
+                                             Parm       Subject    Estimate       Error
+
+                                             UN(1,1)    id          32.2175      4.6207
+                                             UN(2,1)    id          13.4508      3.8664
+                                             UN(2,2)    id          39.4732      5.6568
+
+
+                                                    Solutions for Fixed Effects
+ 
+                                                                        Standard
+                    Effect       trt        week            Estimate       Error       DF    t Value    Pr > |t|
+
+                    Intercept                                 0.9137      2.9053    100.5       0.31      0.7538
+                    trt          Active                      -7.3517      1.1445    97.98      -6.42      <.0001
+                    trt          Placebo                           0           .        .        .         .    
+                    base                                      0.8271     0.09974       97       8.29      <.0001
+                    week                               6     -0.4240      0.9465    97.99      -0.45      0.6552
+                    week                               4           0           .        .        .         .    
+                    week*trt     Active                6      5.6720      1.3385    97.99       4.24      <.0001
+                    week*trt     Placebo               6           0           .        .        .         .    
+                    week*trt     Active                4           0           .        .        .         .    
+                    week*trt     Placebo               4           0           .        .        .         .    
+
+
+                                                  Type III Tests of Fixed Effects
+ 
+                                                        Num      Den
+                                          Effect         DF       DF    F Value    Pr > F
+
+                                          trt             1    97.06      20.25    <.0001
+                                          base            1       97      68.78    <.0001
+                                          week            1    97.99      12.99    0.0005
+                                          week*trt        1    97.99      17.96    <.0001
+
+
+                                                           The SAS System                         14:39 Monday, January 23, 2023   3
+
+                                                       The GLIMMIX Procedure
+
+                                                   week*trt Least Squares Means
+ 
+                                                Standard
+         trt        week            Estimate       Error       DF    t Value    Pr > |t|     Alpha       Lower       Upper
+
+         Active                6     21.3641      0.8915    97.88      23.96      <.0001      0.05     19.5950     23.1333
+         Placebo               6     23.0439      0.8915    97.88      25.85      <.0001      0.05     21.2747     24.8130
+         Active                4     16.1161      0.8060    97.61      20.00      <.0001      0.05     14.5166     17.7157
+         Placebo               4     23.4679      0.8060    97.61      29.12      <.0001      0.05     21.8683     25.0674
+
+
+                                 Simple Effect Comparisons of week*trt Least Squares Means By week
+ 
+       Simple
+       Effect                                      Standard
+       Level     trt        _trt       Estimate       Error       DF    t Value    Pr > |t|     Alpha       Lower       Upper
+
+       week 6    Active     Placebo     -1.6797      1.2649    98.36      -1.33      0.1873      0.05     -4.1898      0.8304
+       week 4    Active     Placebo     -7.3517      1.1445    97.98      -6.42      <.0001      0.05     -9.6229     -5.0806
